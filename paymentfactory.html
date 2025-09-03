@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PaymentFactory Pattern Demo (UPI, Wallet, COD, Credit Card)</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --panel: #111a2b;
+      --ink: #e8f0ff;
+      --muted: #9fb0d0;
+      --accent: #7aa2ff;
+      --ok: #55d187;
+      --warn: #ffb86b;
+      --err: #ff6b7a;
+      --border: #1f2b45;
+    }
+    html, body { height: 100%; }
+    body {
+      margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica Neue, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      background: radial-gradient(1200px 800px at 80% -10%, #13224a 0%, var(--bg) 60%);
+      color: var(--ink);
+      display: grid; place-items: center; padding: 24px;
+    }
+    .app { width: min(920px, 100%); }
+    .card {
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0));
+      border: 1px solid var(--border);
+      border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+      overflow: hidden;
+    }
+    header { padding: 20px 24px; border-bottom: 1px solid var(--border); background: rgba(10,16,30,0.7); backdrop-filter: blur(6px); }
+    header h1 { font-size: 1.25rem; margin: 0; letter-spacing: 0.3px; }
+    header p { margin: 6px 0 0; color: var(--muted); font-size: 0.95rem; }
+
+    .grid { display: grid; gap: 16px; padding: 20px; grid-template-columns: repeat(12, 1fr); }
+    .col-6 { grid-column: span 6; }
+    .col-12 { grid-column: span 12; }
+
+    label { display:block; font-weight: 600; margin-bottom: 8px; color: var(--muted); }
+    input, select, button, textarea {
+      width: 100%; box-sizing: border-box; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border);
+      background: var(--panel); color: var(--ink); outline: none;
+    }
+    input:focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(122,162,255,0.15); }
+
+    .row { display:flex; gap:12px; align-items:center; }
+    .row > * { flex: 1; }
+
+    .btn {
+      cursor: pointer; font-weight: 700; letter-spacing: 0.2px; transition: transform .06s ease, box-shadow .2s ease, background .2s ease; border: none;
+    }
+    .btn-primary { background: linear-gradient(180deg, #2b59ff, #2248d6); }
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(43,89,255,0.35); }
+    .btn-ghost { background: transparent; border: 1px dashed var(--border); color: var(--muted); }
+
+    .log {
+      background: #091226; border-top: 1px solid var(--border); padding: 16px 20px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 0.95rem; height: 220px; overflow: auto;
+    }
+    .log p { margin: 0 0 8px; }
+    .tag { display:inline-block; padding: 2px 8px; border-radius: 999px; background: #0e1a33; color: var(--muted); font-size: .8rem; border:1px solid var(--border); }
+    .ok { color: var(--ok); }
+    .warn { color: var(--warn); }
+    .err { color: var(--err); }
+    .muted { color: var(--muted); }
+    .footer { padding: 12px 20px; font-size: .9rem; color: var(--muted); border-top: 1px solid var(--border); }
+    code { background: #0f1b35; padding: 2px 6px; border-radius: 6px; border: 1px solid var(--border); }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="card">
+      <header>
+        <h1>PaymentFactory – Creational Pattern</h1>
+        <p>Choose a payment type and process a mock transaction. The factory instantiates the correct strategy: <span class="tag">UPI</span> <span class="tag">Wallet</span> <span class="tag">COD</span> <span class="tag">Credit Card</span>.</p>
+      </header>
+
+      <div class="grid">
+        <div class="col-6">
+          <label for="amount">Amount (₹)</label>
+          <input id="amount" type="number" min="1" step="0.01" placeholder="e.g., 499.99" />
+        </div>
+        <div class="col-6">
+          <label for="paymentType">Payment Type</label>
+          <select id="paymentType">
+            <option value="upi">UPI</option>
+            <option value="wallet">Wallet</option>
+            <option value="cod">Cash on Delivery (COD)</option>
+            <option value="card">Credit Card</option>
+          </select>
+        </div>
+
+        <!-- Dynamic fields mount here -->
+        <div id="dynamicFields" class="col-12"></div>
+
+        <div class="col-12 row">
+          <button id="payBtn" class="btn btn-primary">Process Payment</button>
+          <button id="resetBtn" class="btn btn-ghost">Reset</button>
+        </div>
+      </div>
+
+      <div class="log" id="log"></div>
+      <div class="footer">
+        <strong>How it works:</strong> Use <code>PaymentFactory.create(type, data)</code> to get a strategy implementing <code>pay(amount)</code> and optional <code>validate()</code>. Swap types without changing calling code.
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // =============================
+    // Payment Strategy Interfaces
+    // =============================
+    class PaymentStrategy {
+      constructor(data = {}) { this.data = data; }
+      validate() { return { ok: true, message: "Valid" }; }
+      pay(amount) { throw new Error("pay(amount) must be implemented by concrete strategy"); }
+      label() { return this.constructor.name; }
+    }
+
+    class UpiPayment extends PaymentStrategy {
+      validate() {
+        const { vpa } = this.data;
+        const ok = typeof vpa === 'string' && /^[\w.\-]+@[\w\-]+$/.test(vpa);
+        return ok ? { ok, message: "UPI VPA looks valid" } : { ok, message: "Invalid UPI VPA (e.g., name@bank)" };
+      }
+      pay(amount) {
+        return `Collect request sent to ${this.data.vpa} for ₹${amount.toFixed(2)}.`;
+      }
+    }
+
+    class WalletPayment extends PaymentStrategy {
+      validate() {
+        const { walletId, otp } = this.data;
+        const ok = !!walletId && String(otp || '').length === 6;
+        return ok ? { ok, message: "Wallet ID & 6-digit OTP present" } : { ok, message: "Wallet ID or 6-digit OTP missing" };
+      }
+      pay(amount) {
+        return `Wallet ${this.data.walletId} charged ₹${amount.toFixed(2)}.`;
+      }
+    }
+
+    class CodPayment extends PaymentStrategy {
+      validate() {
+        const { address } = this.data;
+        const ok = (address || '').trim().length > 10;
+        return ok ? { ok, message: "Address looks sufficient for COD" } : { ok, message: "Provide a full delivery address for COD" };
+      }
+      pay(amount) {
+        return `COD booked. Please keep ₹${amount.toFixed(2)} ready on delivery.`;
+      }
+    }
+
+    class CreditCardPayment extends PaymentStrategy {
+      luhn(card) {
+        // Luhn checksum for demo validation
+        const digits = card.replace(/\D/g, '').split('').reverse().map(Number);
+        const sum = digits.reduce((acc, d, i) => acc + (i % 2 ? ((d *= 2) > 9 ? d - 9 : d) : d), 0);
+        return sum % 10 === 0;
+      }
+      validate() {
+        const { cardNumber, name, expiry, cvv } = this.data;
+        let ok = true; let msg = [];
+        ok &= !!name && name.trim().length > 2; msg.push(ok ? "" : "Name on card required");
+        const expOk = /^(0[1-9]|1[0-2])\/(\d{2})$/.test(expiry || "");
+        ok &= expOk; msg.push(expOk ? "" : "Expiry must be MM/YY");
+        const cvvOk = /^(\d{3,4})$/.test(cvv || "");
+        ok &= cvvOk; msg.push(cvvOk ? "" : "CVV 3–4 digits");
+        const cardOk = this.luhn(String(cardNumber || ""));
+        ok &= cardOk; msg.push(cardOk ? "" : "Card number failed Luhn check");
+        return { ok: !!ok, message: msg.filter(Boolean).join("; ") || "Card details look valid" };
+      }
+      pay(amount) {
+        const last4 = String(this.data.cardNumber).slice(-4);
+        return `Card **** **** **** ${last4} authorized for ₹${amount.toFixed(2)}.`;
+      }
+    }
+
+    // =============================
+    // Factory
+    // =============================
+    const PaymentFactory = {
+      /**
+       * Create a concrete payment strategy by type
+       * @param {"upi"|"wallet"|"cod"|"card"} type
+       * @param {object} data – strategy-specific params
+       */
+      create(type, data = {}) {
+        switch ((type || '').toLowerCase()) {
+          case 'upi':   return new UpiPayment(data);
+          case 'wallet':return new WalletPayment(data);
+          case 'cod':   return new CodPayment(data);
+          case 'card':  return new CreditCardPayment(data);
+          default: throw new Error(`Unsupported payment type: ${type}`);
+        }
+      }
+    };
+
+    // =============================
+    // Minimal UI to demo the pattern
+    // =============================
+    const el = (sel) => document.querySelector(sel);
+    const log = (m, cls = 'muted') => {
+      const p = document.createElement('p'); p.className = cls; p.textContent = `[${new Date().toLocaleTimeString()}] ${m}`; el('#log').prepend(p);
+    };
+
+    function renderFields(type) {
+      const root = el('#dynamicFields');
+      const tpl = {
+        upi: `
+          <div class="row">
+            <div>
+              <label>UPI VPA</label>
+              <input id="vpa" placeholder="name@bank" />
+            </div>
+          </div>`,
+        wallet: `
+          <div class="row">
+            <div>
+              <label>Wallet ID</label>
+              <input id="walletId" placeholder="WALLET-12345" />
+            </div>
+            <div>
+              <label>OTP (6 digits)</label>
+              <input id="otp" inputmode="numeric" maxlength="6" placeholder="123456" />
+            </div>
+          </div>`,
+        cod: `
+          <div>
+            <label>Delivery Address</label>
+            <textarea id="address" rows="3" placeholder="Flat / Street / City / PIN"></textarea>
+          </div>`,
+        card: `
+          <div class="row">
+            <div>
+              <label>Name on Card</label>
+              <input id="name" placeholder="A B C" />
+            </div>
+            <div>
+              <label>Card Number</label>
+              <input id="cardNumber" inputmode="numeric" placeholder="4111 1111 1111 1111" />
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label>Expiry (MM/YY)</label>
+              <input id="expiry" placeholder="04/28" />
+            </div>
+            <div>
+              <label>CVV</label>
+              <input id="cvv" inputmode="numeric" maxlength="4" placeholder="123" />
+            </div>
+          </div>`
+      }[type] || '';
+      root.innerHTML = tpl;
+    }
+
+    function collectData(type) {
+      switch (type) {
+        case 'upi': return { vpa: el('#vpa').value.trim() };
+        case 'wallet': return { walletId: el('#walletId').value.trim(), otp: el('#otp').value.trim() };
+        case 'cod': return { address: el('#address').value.trim() };
+        case 'card': return {
+          name: el('#name').value.trim(),
+          cardNumber: el('#cardNumber').value.replace(/\s+/g, ''),
+          expiry: el('#expiry').value.trim(),
+          cvv: el('#cvv').value.trim()
+        };
+      }
+    }
+
+    function reset() {
+      el('#amount').value = '';
+      el('#paymentType').value = 'upi';
+      renderFields('upi');
+      el('#log').innerHTML = '';
+      log('UI reset. Choose a type and enter details.');
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      renderFields(el('#paymentType').value);
+      log('PaymentFactory ready. Select a payment method.');
+
+      el('#paymentType').addEventListener('change', (e) => {
+        renderFields(e.target.value);
+        log(`Switched to ${e.target.options[e.target.selectedIndex].text}.`);
+      });
+
+      el('#payBtn').addEventListener('click', () => {
+        const amount = parseFloat(el('#amount').value);
+        const type = el('#paymentType').value;
+        if (!(amount > 0)) { log('Enter a valid amount.', 'warn'); return; }
+
+        try {
+          const data = collectData(type);
+          const strategy = PaymentFactory.create(type, data);
+          const { ok, message } = strategy.validate();
+          if (!ok) { log(message || 'Validation failed', 'err'); return; }
+          log(message, 'ok');
+          const result = strategy.pay(amount);
+          log(`${strategy.label()}: ${result}`, 'ok');
+        } catch (err) {
+          log(err.message || String(err), 'err');
+        }
+      });
+
+      el('#resetBtn').addEventListener('click', reset);
+    });
+  </script>
+</body>
+</html>
+
